@@ -10,6 +10,7 @@ import android.hardware.usb.UsbDeviceConnection;
 import android.hardware.usb.UsbEndpoint;
 import android.hardware.usb.UsbInterface;
 import android.hardware.usb.UsbManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
@@ -20,6 +21,7 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import com.tcl.navigator.hostchart.R;
 import com.tcl.navigator.hostchart.base.MyApplication;
@@ -97,10 +99,10 @@ public class MainActivity extends AppCompatActivity implements UsbDetachedReceiv
     }
 
     private void initView() {
-        mLog = (TextView) findViewById(R.id.log);
-        mError = (TextView) findViewById(R.id.error);
-        mMessage = (EditText) findViewById(R.id.message);
-        mSendMessage = (Button) findViewById(R.id.sendmessage);
+        mLog = findViewById(R.id.log);
+        mError = findViewById(R.id.error);
+        mMessage = findViewById(R.id.message);
+        mSendMessage = findViewById(R.id.sendmessage);
     }
 
     private void initListener() {
@@ -125,21 +127,40 @@ public class MainActivity extends AppCompatActivity implements UsbDetachedReceiv
      * 打开设备 , 让车机和手机端连起来
      */
     private void openDevices() {
-        PendingIntent pendingIntent = PendingIntent.getBroadcast(mContext, 0, new Intent(USB_ACTION), 0);
+        PendingIntent pendingIntent = PendingIntent.getBroadcast(mContext, 0,
+                new Intent(USB_ACTION),
+                Build.VERSION.SDK_INT>=34? PendingIntent.FLAG_IMMUTABLE:PendingIntent.FLAG_MUTABLE);
+
         IntentFilter intentFilter = new IntentFilter(USB_ACTION);
         mOpenDevicesReceiver = new OpenDevicesReceiver(this);
-        registerReceiver(mOpenDevicesReceiver, intentFilter);
+        if (Build.VERSION.SDK_INT>=33){
+            registerReceiver(mOpenDevicesReceiver, intentFilter,Context.RECEIVER_EXPORTED);
+        }else{
+            registerReceiver(mOpenDevicesReceiver, intentFilter);
+        }
 
         //列举设备(手机)
         HashMap<String, UsbDevice> deviceList = mUsbManager.getDeviceList();
         if (deviceList != null) {
-            for (UsbDevice usbDevice : deviceList.values()) {
-                int productId = usbDevice.getProductId();
-                if (productId != 377 && productId != 7205) {
-                    if (mUsbManager.hasPermission(usbDevice)) {
-                        initAccessory(usbDevice);
+            if (deviceList.isEmpty()){
+                Toast.makeText(this,"请连接Android配件设备",Toast.LENGTH_LONG).show();
+            }else{
+                for (UsbDevice dev : deviceList.values()) {
+                    String usbInfo = "DeviceID: "+dev.getDeviceId()+"\n"+
+                            "VendorId: "+dev.getVendorId()+"\n"+
+                            "ProductId: "+dev.getProductId()+"\n"+
+                            "Manufacturer: "+dev.getManufacturerName()+"\n"+
+                            "Product: "+dev.getProductName()+"\n"+
+                            "Version: "+dev.getVersion()+"\n";
+                    mLog.setText(usbInfo);
+                    System.out.println("==========================");
+                    System.out.println(usbInfo);
+                    System.out.println("==========================");
+                    //如果拥有USB配件权限
+                    if (mUsbManager.hasPermission(dev)) {
+                        initAccessory(dev);//初始化USB配件
                     } else {
-                        mUsbManager.requestPermission(usbDevice, pendingIntent);
+                        mUsbManager.requestPermission(dev, pendingIntent);//请求权限
                     }
                 }
             }
